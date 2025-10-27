@@ -56,11 +56,12 @@ static int getNumDevices() {
 static bool supportFabricMem() {
     if (getenv("MC_USE_NVLINK_IPC")) return false;
 
+#ifdef USE_CUDA
     int num_devices = 0;
     cudaError_t err = cudaGetDeviceCount(&num_devices);
     if (err != cudaSuccess) {
         LOG(ERROR) << "NvlinkTransport: cudaGetDeviceCount failed: "
-                   << cudaGetErrorString(err);
+                    << cudaGetErrorString(err);
         return false;
     }
     if (num_devices == 0) {
@@ -68,7 +69,6 @@ static bool supportFabricMem() {
         return false;
     }
 
-#ifdef USE_CUDA
     for (int device_id = 0; device_id < num_devices; ++device_id) {
         int device_support_fabric_mem = 0;
         cuDeviceGetAttribute(&device_support_fabric_mem,
@@ -78,6 +78,9 @@ static bool supportFabricMem() {
             return false;
         }
     }
+    
+#elif USE_ROCM
+    return false;
 #endif
     return true;
 }
@@ -393,7 +396,7 @@ int NvlinkTransport::registerLocalMemory(void *addr, size_t length,
         void *real_addr;
         size_t real_size;
         result = cuMemGetAddressRange((CUdeviceptr *)&real_addr, &real_size,
-                                      (CUdeviceptr)addr);
+        (CUdeviceptr)addr);
         if (result != CUDA_SUCCESS) {
             LOG(WARNING) << "NvlinkTransport: cuMemGetAddressRange failed: "
                          << result;

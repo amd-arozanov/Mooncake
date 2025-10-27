@@ -54,7 +54,17 @@ static int getNumDevices() {
 }
 
 static bool supportFabricMem() {
-    if (getenv("MC_USE_NVLINK_IPC")) return false;
+    if (getenv("MC_USE_NVLINK_IPC")) {
+        // MC_USE_NVLINK_IPC = 0 | 1
+        bool use_ipc = true;
+        try {
+            int value = std::stoi(getenv("MC_USE_NVLINK_IPC"));
+            use_ipc = (value != 0);
+        } catch (...) {
+            use_ipc = true;
+        }
+        return !use_ipc;
+    }
 
 #ifdef USE_CUDA
     int num_devices = 0;

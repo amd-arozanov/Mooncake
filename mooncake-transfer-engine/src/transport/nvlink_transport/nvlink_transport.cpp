@@ -144,13 +144,13 @@ static bool enableP2PAccess(int src_device_id, int dst_device_id) {
     return true;
 }
 
-NvlinkTransport::NvlinkTransport() : use_fabric_mem_(supportFabricMem()) {}
+NvlinkTransport::NvlinkTransport() : use_fabric_mem_(supportFabricMem()), 
+                                     stream_pool_(default_num_streams) { }
 //     int num_devices = getNumDevices();
 //     if (globalConfig().trace) {
 //         LOG(INFO) << "NvlinkTransport: use_fabric_mem_:" << use_fabric_mem_
 //                   << ", num_devices: " << num_devices;
 //     }
-
 //     for (int src_device_id = 0; src_device_id < num_devices; ++src_device_id)
 //     {
 //         for (int dst_device_id = src_device_id + 1; dst_device_id <

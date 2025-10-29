@@ -17,6 +17,7 @@
 #include "topology.h"
 #include "transfer_metadata.h"
 #include "transport/transport.h"
+#include "stream_pool.h"
 
 namespace mooncake {
 
@@ -84,6 +85,9 @@ class NvlinkTransport : public Transport {
         remap_entries_;
     RWSpinlock remap_lock_;
     bool use_fabric_mem_;
+
+    static constexpr int default_num_streams = 64;
+    StreamPool stream_pool_;
 
     std::mutex register_mutex_;
 };

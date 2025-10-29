@@ -54,8 +54,11 @@ StreamPool::~StreamPool() {
 
 cudaStream_t StreamPool::getNextStream() {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (streams_.size() == 0) return nullptr;
+
     cudaStream_t stream = streams_[next_idx_];
     next_idx_ = (next_idx_ + 1) % streams_.size();
+    
     return stream;
 }
 

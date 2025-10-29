@@ -279,6 +279,11 @@ Status NvlinkTransport::getTransferStatus(BatchID batch_id, size_t task_id,
 
 Status NvlinkTransport::submitTransferTask(
     const std::vector<TransferTask *> &task_list) {
+
+    std::vector<cudaEvent_t> events(task_list.size());
+    std::vector<Slice *> slices(task_list.size());
+    cudaError_t err;
+
     for (size_t index = 0; index < task_list.size(); ++index) {
         assert(task_list[index]);
         auto &task = *task_list[index];
@@ -301,18 +306,50 @@ Status NvlinkTransport::submitTransferTask(
         slice->status = Slice::PENDING;
         task.slice_list.push_back(slice);
         __sync_fetch_and_add(&task.slice_count, 1);
-        cudaError_t err;
-        if (slice->opcode == TransferRequest::READ)
-            err = cudaMemcpy(slice->source_addr, (void *)slice->local.dest_addr,
-                             slice->length, cudaMemcpyDefault);
-        else
-            err = cudaMemcpy((void *)slice->local.dest_addr, slice->source_addr,
-                             slice->length, cudaMemcpyDefault);
-        if (err != cudaSuccess)
+        
+        slices[index] = slice;
+        events[index] = event_pool_.getEvent();
+        cudaStream_t stream = stream_pool_.getNextStream();
+
+        if (events[index] == nullptr || stream == nullptr) {
             slice->markFailed();
-        else
-            slice->markSuccess();
+            continue;
+        }
+
+        if (slice->opcode == TransferRequest::READ) {
+            err = cudaMemcpyAsync(slice->source_addr,
+                                  (void *)slice->local.dest_addr, slice->length,
+                                  cudaMemcpyDefault, stream);
+        } else {
+            err = cudaMemcpyAsync((void *)slice->local.dest_addr,
+                                   slice->source_addr, slice->length,
+                                   cudaMemcpyDefault, stream);
+        }
+        if (err != cudaSuccess) {
+            slice->markFailed();
+            event_pool_.putEvent(events[index]);
+        }
+
+        err = cudaEventRecord(events[index], stream);
+        if (err != cudaSuccess) {
+            slice->markFailed();
+            event_pool_.putEvent(events[index]);
+        }
     }
+
+    for (size_t index = 0; index < task_list.size(); ++index) {
+        Slice *slice = slices[index];
+        if (slice->status == Slice::SliceStatus::FAILED) {
+            continue;
+        }
+
+        err = cudaEventSynchronize(events[index]);
+        if (err != cudaSuccess) slice->markFailed();
+        else slice->markSuccess();
+
+        event_pool_.putEvent(events[index]);
+    }
+
     return Status::OK();
 }
 

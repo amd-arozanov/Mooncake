@@ -145,7 +145,8 @@ static bool enableP2PAccess(int src_device_id, int dst_device_id) {
 }
 
 NvlinkTransport::NvlinkTransport() : use_fabric_mem_(supportFabricMem()), 
-                                     stream_pool_(default_num_streams) { }
+                                     stream_pool_(default_num_streams),
+                                     event_pool_(default_num_events) { }
 //     int num_devices = getNumDevices();
 //     if (globalConfig().trace) {
 //         LOG(INFO) << "NvlinkTransport: use_fabric_mem_:" << use_fabric_mem_

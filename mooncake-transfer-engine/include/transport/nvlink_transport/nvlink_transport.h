@@ -18,6 +18,7 @@
 #include "transfer_metadata.h"
 #include "transport/transport.h"
 #include "stream_pool.h"
+#include "event_pool.h"
 
 namespace mooncake {
 
@@ -87,7 +88,9 @@ class NvlinkTransport : public Transport {
     bool use_fabric_mem_;
 
     static constexpr int default_num_streams = 64;
+    static constexpr int default_num_events = 64;
     StreamPool stream_pool_;
+    EventPool event_pool_;
 
     std::mutex register_mutex_;
 };

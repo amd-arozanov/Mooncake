@@ -13,10 +13,12 @@ const static std::string GPU_PREFIX = "hip:";
 // TODO: Change to appropriate handle type when HIP adds multi-node support.
 #define CU_MEM_HANDLE_TYPE_FABRIC hipMemHandleTypePosixFileDescriptor
 
-// hipify-perl warning: unsupported HIP identifier:
-// CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED
-#define CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED \
-    hipDeviceAttributeVirtualMemoryManagementSupported
+//hipify-perl warning: unsupported HIP identifier: CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED
+#define CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED hipDeviceAttributeVirtualMemoryManagementSupported
 
-// hipify-perl warning: unsupported HIP identifier: CUmemFabricHandle
-#define CUmemFabricHandle void*
+//hipify-perl warning: unsupported HIP identifier: CUmemFabricHandle
+struct hipMemFabricHandle {
+    int fd;
+    int pid;
+};
+#define CUmemFabricHandle hipMemFabricHandle

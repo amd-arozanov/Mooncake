@@ -24,6 +24,10 @@
 #include <cstdint>
 #include <iomanip>
 #include <memory>
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <errno.h>
+#include <cstring>
 
 #include "common.h"
 #include "config.h"
@@ -208,6 +212,31 @@ static bool enableP2PAccess(int src_device_id, int dst_device_id) {
 
     return true;
 }
+
+#ifdef USE_ROCM
+static int open_fd(const CUmemFabricHandle& export_handle) {
+    int fd = export_handle.fd;
+    int pid = export_handle.pid;
+
+    int pid_fd = syscall(__NR_pidfd_open, pid, 0);
+    if (pid_fd == -1) {
+        LOG(ERROR) << "pidfd_open error: " << strerror(errno)
+                   << " ( " << pid << " " << fd << ")";
+        return -1;
+    }
+
+    int open_fd = syscall(__NR_pidfd_getfd, pid_fd, fd, 0);
+    if (open_fd == -1) {
+        LOG(ERROR) << "pidfd_getfd error: " << strerror(errno)
+                   << " ( " << pid << " " << fd << ")";
+        close(pid_fd);
+        return -1;
+    }
+
+    close(pid_fd);
+    return open_fd;
+}
+#endif
 
 NvlinkTransport::NvlinkTransport() : use_fabric_mem_(supportFabricMem()), 
                                      stream_pool_(default_num_streams),
@@ -546,6 +575,10 @@ int NvlinkTransport::registerLocalMemory(void *addr, size_t length,
             return -1;
         }
 
+#ifdef USE_ROCM
+        export_handle.pid = getpid();
+#endif
+
         (void)remote_accessible;
         BufferDesc desc;
         desc.addr = (uint64_t)real_addr;  // (uint64_t)addr;
@@ -607,6 +640,16 @@ int NvlinkTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
                     memcpy(&export_handle, output_buffer.data(),
                            sizeof(export_handle));
                     void *shm_addr = nullptr;
+#ifdef USE_ROCM
+                    if (CU_MEM_HANDLE_TYPE_FABRIC == 
+                        hipMemHandleTypePosixFileDescriptor) {
+                        export_handle.fd = open_fd(export_handle);
+                        if (export_handle.fd == -1) {
+                            LOG(ERROR) << "NvlinkTransport: failed to open fd";
+                            return -1;
+                        }
+                    }
+#endif
                     CUmemGenericAllocationHandle handle;
                     auto result = cuMemImportFromShareableHandle(
                         &handle, &export_handle, CU_MEM_HANDLE_TYPE_FABRIC);

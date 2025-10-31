@@ -117,7 +117,7 @@ static void *allocateMemoryPool(size_t size, int buffer_id,
             // Ensure memory initialization is done from CPU standpoint
             checkCudaError(cudaStreamSynchronize(0), "Failed to synchronize");
         }
-        
+
         return d_buf;
     }
 #endif

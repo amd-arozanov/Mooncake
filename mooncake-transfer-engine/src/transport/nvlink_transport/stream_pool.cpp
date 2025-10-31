@@ -17,7 +17,7 @@
 
 namespace mooncake {
 
-static bool checkError(cudaError_t result, const char *message) {
+static bool checkError(cudaError_t result, const char* message) {
     if (result != cudaSuccess) {
         LOG(ERROR) << message << " (Error code: " << result << " - "
                    << cudaGetErrorString(result) << ")";
@@ -26,10 +26,8 @@ static bool checkError(cudaError_t result, const char *message) {
     return true;
 }
 
-StreamPool::StreamPool(size_t recommended_pool_size) 
-    : pool_size_(recommended_pool_size), 
-      num_devices_(0) {
-    
+StreamPool::StreamPool(size_t recommended_pool_size)
+    : pool_size_(recommended_pool_size), num_devices_(0) {
     // Read pool size from environment variable if set
     if (getenv("MC_NUM_GPU_STREAMS")) {
         try {
@@ -40,13 +38,13 @@ StreamPool::StreamPool(size_t recommended_pool_size)
             pool_size_ = recommended_pool_size;
         }
     }
-    
+
     // Get number of devices and pre-allocate vector
     cudaError_t err = cudaGetDeviceCount(&num_devices_);
     if (!checkError(err, "StreamPool: failed to get device count")) {
         num_devices_ = 1;  // Fallback to single device
     }
-    
+
     device_pools_.resize(num_devices_);
 }
 
@@ -64,7 +62,7 @@ StreamPool::~StreamPool() {
 
 void StreamPool::initializeDevicePool(int device_id) {
     if (device_id >= num_devices_) {
-        LOG(ERROR) << "StreamPool: device_id " << device_id 
+        LOG(ERROR) << "StreamPool: device_id " << device_id
                    << " exceeds available devices " << num_devices_;
         return;
     }
@@ -99,28 +97,28 @@ cudaStream_t StreamPool::getNextStream(int device_id) {
     }
 
     if (device_id >= num_devices_) {
-        LOG(ERROR) << "StreamPool: device_id " << device_id 
+        LOG(ERROR) << "StreamPool: device_id " << device_id
                    << " exceeds available devices " << num_devices_;
         return nullptr;
     }
 
     std::lock_guard<std::mutex> lock(global_mutex_);
-    
+
     // Initialize device pool if it doesn't exist
     auto& device_pool = device_pools_[device_id];
     if (!device_pool.initialized_) {
         initializeDevicePool(device_id);
     }
-    
+
     std::lock_guard<std::mutex> device_lock(*device_pool.mutex_);
-    
+
     if (device_pool.streams_.size() == 0) return nullptr;
 
     cudaStream_t stream = device_pool.streams_[device_pool.next_idx_];
-    device_pool.next_idx_ = (device_pool.next_idx_ + 1) % 
-                            device_pool.streams_.size();
-    
+    device_pool.next_idx_ =
+        (device_pool.next_idx_ + 1) % device_pool.streams_.size();
+
     return stream;
 }
 
-} // namespace mooncake
+}  // namespace mooncake

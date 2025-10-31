@@ -3,13 +3,7 @@
 #ifndef STREAM_POOL_H_
 #define STREAM_POOL_H_
 
-#ifdef USE_CUDA
-#include <cuda_runtime.h>
-#define stream_t cudaStream_t
-#elif USE_ROCM
-#include <hip/hip_runtime.h>
-#define stream_t hipStream_t
-#endif
+#include "cuda_alike.h"
 
 #include <vector>
 #include <mutex>
@@ -22,23 +16,24 @@ class StreamPool {
     StreamPool(size_t recommended_pool_size);
     ~StreamPool();
 
-    stream_t getNextStream(int device_id = -1);
+    cudaStream_t getNextStream(int device_id = -1);
 
    private:
     struct DeviceStreamPool {
-        std::vector<stream_t> streams_;
+        std::vector<cudaStream_t> streams_;
         size_t next_idx_;
         std::unique_ptr<std::mutex> mutex_;
         bool initialized_;
-        
-        DeviceStreamPool() : next_idx_(0), mutex_(new std::mutex()), initialized_(false) {}
+
+        DeviceStreamPool()
+            : next_idx_(0), mutex_(new std::mutex()), initialized_(false) {}
     };
-    
+
     std::vector<DeviceStreamPool> device_pools_;
     std::mutex global_mutex_;
     size_t pool_size_;
     int num_devices_;
-    
+
     void initializeDevicePool(int device_id);
 };
 

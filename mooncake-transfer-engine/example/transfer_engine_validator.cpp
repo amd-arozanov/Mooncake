@@ -125,15 +125,17 @@ static void freeMemoryPool(void *addr, size_t size) {
         return;
     }
 #elif USE_HIP
-    // hipMemRetainAllocationHandle fails if memory was allocated using hipMalloc,
-    // which is possible inside NvlinkTransport::allocatePinnedLocalMemory
-    // So, call just freePinnedLocalMemory, which will handle how to free
+    // hipMemRetainAllocationHandle fails if memory was allocated using
+    // hipMalloc, which is possible inside
+    // NvlinkTransport::allocatePinnedLocalMemory. So, call just
+    // freePinnedLocalMemory, which will handle how to free
     if (FLAGS_use_vram) {
         mooncake::NvlinkTransport::freePinnedLocalMemory(addr);
         return;
     }
-#endif // USE_HIP
-#endif // USE_MNNVL
+#endif  // USE_HIP
+#endif  // USE_MNNVL
+
     // check pointer on GPU
     cudaPointerAttributes attributes;
     checkCudaError(cudaPointerGetAttributes(&attributes, addr),

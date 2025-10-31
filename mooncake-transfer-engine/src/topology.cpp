@@ -181,7 +181,10 @@ static std::vector<TopologyEntry> discoverCudaTopology(
             cudaSuccess) {
             continue;
         }
-        for (char *ch = pci_bus_id; (*ch = tolower(*ch)); ch++);
+        // Convert PCI bus ID to lowercase for consistency
+        for (char *ch = pci_bus_id; *ch; ++ch) {
+            *ch = tolower(*ch);
+        }
 
         std::vector<std::string> preferred_hca;
         std::vector<std::string> avail_hca;

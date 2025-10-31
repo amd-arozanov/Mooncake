@@ -17,7 +17,7 @@
 
 namespace mooncake {
 
-static bool checkError(cudaError_t result, const char *message) {
+static bool checkError(cudaError_t result, const char* message) {
     if (result != cudaSuccess) {
         LOG(ERROR) << message << " (Error code: " << result << " - "
                    << cudaGetErrorString(result) << ")";
@@ -26,38 +26,36 @@ static bool checkError(cudaError_t result, const char *message) {
     return true;
 }
 
-EventPool::EventPool(size_t pool_size) 
-    : pool_size_(pool_size), num_devices_(0)
-{
+EventPool::EventPool(size_t pool_size)
+    : pool_size_(pool_size), num_devices_(0) {
     // Get number of devices and pre-allocate vector
     cudaError_t err = cudaGetDeviceCount(&num_devices_);
     if (!checkError(err, "EventPool: failed to get device count")) {
         num_devices_ = 1;  // Fallback to single device
     }
-    
+
     device_pools_.resize(num_devices_);
 }
 
-EventPool::~EventPool() 
-{
+EventPool::~EventPool() {
     std::lock_guard<std::mutex> lock(global_mutex_);
     for (int device_id = 0; device_id < num_devices_; ++device_id) {
         auto& device_pool = device_pools_[device_id];
         std::lock_guard<std::mutex> device_lock(*device_pool.mutex_);
         for (auto e : device_pool.all_events_) {
             cudaError_t result = cudaEventDestroy(e);
-            checkError(result,  "EventPool: unable to destroy event");
+            checkError(result, "EventPool: unable to destroy event");
         }
     }
 }
 
 void EventPool::initializeDevicePool(int device_id) {
     if (device_id >= num_devices_) {
-        LOG(ERROR) << "EventPool: device_id " << device_id 
+        LOG(ERROR) << "EventPool: device_id " << device_id
                    << " exceeds available devices " << num_devices_;
         return;
     }
-    
+
     // Set device before creating events
     cudaError_t err = cudaSetDevice(device_id);
     if (!checkError(err, "EventPool: failed to set device")) {
@@ -75,8 +73,7 @@ void EventPool::initializeDevicePool(int device_id) {
     device_pool.initialized_ = true;
 }
 
-cudaEvent_t EventPool::getEvent(int device_id) 
-{
+cudaEvent_t EventPool::getEvent(int device_id) {
     // If device_id is not specified, get current device
     if (device_id == -1) {
         cudaError_t err = cudaGetDevice(&device_id);
@@ -86,21 +83,21 @@ cudaEvent_t EventPool::getEvent(int device_id)
     }
 
     if (device_id >= num_devices_) {
-        LOG(ERROR) << "EventPool: device_id " << device_id 
+        LOG(ERROR) << "EventPool: device_id " << device_id
                    << " exceeds available devices " << num_devices_;
         return nullptr;
     }
 
     std::lock_guard<std::mutex> lock(global_mutex_);
-    
+
     // Initialize device pool if it doesn't exist
     auto& device_pool = device_pools_[device_id];
     if (!device_pool.initialized_) {
         initializeDevicePool(device_id);
     }
-    
+
     std::lock_guard<std::mutex> device_lock(*device_pool.mutex_);
-    
+
     // If no available events, create a new one
     if (device_pool.available_events_.empty()) {
         cudaEvent_t new_event = createEvent(device_id);
@@ -113,15 +110,14 @@ cudaEvent_t EventPool::getEvent(int device_id)
             return nullptr;
         }
     }
-    
+
     // Get an available event from the back and remove it from available list
     cudaEvent_t event = device_pool.available_events_.back();
     device_pool.available_events_.pop_back();
     return event;
 }
 
-void EventPool::putEvent(cudaEvent_t event, int device_id) 
-{
+void EventPool::putEvent(cudaEvent_t event, int device_id) {
     // If device_id is not specified, get current device
     if (device_id == -1) {
         cudaError_t err = cudaGetDevice(&device_id);
@@ -131,41 +127,40 @@ void EventPool::putEvent(cudaEvent_t event, int device_id)
     }
 
     if (device_id >= num_devices_) {
-        LOG(ERROR) << "EventPool: device_id " << device_id 
+        LOG(ERROR) << "EventPool: device_id " << device_id
                    << " exceeds available devices " << num_devices_;
         return;
     }
 
     std::lock_guard<std::mutex> lock(global_mutex_);
-    
+
     auto& device_pool = device_pools_[device_id];
     if (!device_pool.initialized_) {
         LOG(ERROR) << "EventPool: trying to return event to "
                    << "non-initialized device pool " << device_id;
         return;
     }
-    
+
     std::lock_guard<std::mutex> device_lock(*device_pool.mutex_);
     device_pool.available_events_.push_back(event);
 }
 
-cudaEvent_t EventPool::createEvent(int device_id)
-{
+cudaEvent_t EventPool::createEvent(int device_id) {
     // Set device before creating event
     cudaError_t err = cudaSetDevice(device_id);
-    if (!checkError(err, 
+    if (!checkError(err,
                     "EventPool: failed to set device when creating event")) {
         return nullptr;
     }
 
     cudaEvent_t event;
-    
+
     cudaError_t result = cudaEventCreate(&event);
     if (!checkError(result, "EventPool: unable to create event")) {
         return nullptr;
     }
-    
+
     return event;
 }
 
-} // namespace mooncake
+}  // namespace mooncake

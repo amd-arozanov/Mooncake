@@ -3,6 +3,9 @@
 
 const static std::string GPU_PREFIX = "hip:";
 
+#define cudaEvent_t hipEvent_t
+#define cudaStream_t hipStream_t
+
 // hipify-perl warning: unsupported HIP identifier: cudaMemoryTypeUnregistered
 #define cudaMemoryTypeUnregistered hipMemoryTypeUnregistered
 
@@ -13,10 +16,12 @@ const static std::string GPU_PREFIX = "hip:";
 // TODO: Change to appropriate handle type when HIP adds multi-node support.
 #define CU_MEM_HANDLE_TYPE_FABRIC hipMemHandleTypePosixFileDescriptor
 
-//hipify-perl warning: unsupported HIP identifier: CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED
-#define CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED hipDeviceAttributeVirtualMemoryManagementSupported
+// hipify-perl warning: unsupported HIP identifier:
+// CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED
+#define CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED \
+    hipDeviceAttributeVirtualMemoryManagementSupported
 
-//hipify-perl warning: unsupported HIP identifier: CUmemFabricHandle
+// hipify-perl warning: unsupported HIP identifier: CUmemFabricHandle
 struct hipMemFabricHandle {
     int fd;
     int pid;

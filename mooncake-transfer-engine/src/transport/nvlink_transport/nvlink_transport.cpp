@@ -57,49 +57,50 @@ static int getNumDevices() {
     return cached_num_devices;
 }
 
-static int getDeviceFromPointer(void* ptr) {
+static int getDeviceFromPointer(void *ptr) {
     if (!ptr) {
         LOG(ERROR) << "NvlinkTransport: null pointer passed to "
                       "getDeviceFromPointer";
         return -1;
     }
-    
+
     cudaPointerAttributes attributes;
     cudaError_t err = cudaPointerGetAttributes(&attributes, ptr);
-    if (!checkCudaErrorReturn(err, 
-                              "NvlinkTransport: cudaPointerGetAttributes failed")) {
+    if (!checkCudaErrorReturn(
+            err, "NvlinkTransport: cudaPointerGetAttributes failed")) {
         return -1;
     }
-    
+
     if (attributes.type == cudaMemoryTypeDevice) {
         // GPU memory - return device ID
         return attributes.device;
-    } else if (attributes.type == cudaMemoryTypeHost || 
+    } else if (attributes.type == cudaMemoryTypeHost ||
                attributes.type == cudaMemoryTypeUnregistered) {
         // Host memory - return -1 to indicate CPU memory
-        // This is not an error, just indicates we should use current device context
+        // This is not an error, just indicates we should use current device
+        // context
         if (globalConfig().trace) {
-            LOG(INFO) << "NvlinkTransport: pointer " << ptr 
-                      << " is host memory (type: " << attributes.type 
+            LOG(INFO) << "NvlinkTransport: pointer " << ptr
+                      << " is host memory (type: " << attributes.type
                       << "), will use current device context";
         }
         return -1;
     } else {
-        LOG(WARNING) << "NvlinkTransport: unknown memory type " 
+        LOG(WARNING) << "NvlinkTransport: unknown memory type "
                      << attributes.type << " for pointer " << ptr;
         return -1;
     }
 }
 
-static Status setDeviceContextForTransfer(void* source_ptr, int& device_id) {
+static Status setDeviceContextForTransfer(void *source_ptr, int &device_id) {
     // Get device ID from source pointer
     device_id = getDeviceFromPointer(source_ptr);
-    
+
     // Set device context if we have GPU memory
     if (device_id >= 0) {
         cudaError_t err = cudaSetDevice(device_id);
-        if (!checkCudaErrorReturn(err, 
-                                  "NvlinkTransport: failed to set device context")) {
+        if (!checkCudaErrorReturn(
+                err, "NvlinkTransport: failed to set device context")) {
             return Status::InvalidArgument("Failed to set device context");
         }
     } else {
@@ -112,13 +113,14 @@ static Status setDeviceContextForTransfer(void* source_ptr, int& device_id) {
             // Fallback to device 0
             device_id = 0;
             err = cudaSetDevice(device_id);
-            if (!checkCudaErrorReturn(err, 
-                                      "NvlinkTransport: failed to set fallback device")) {
-                return Status::InvalidArgument("Failed to set fallback device context");
+            if (!checkCudaErrorReturn(
+                    err, "NvlinkTransport: failed to set fallback device")) {
+                return Status::InvalidArgument(
+                    "Failed to set fallback device context");
             }
         }
     }
-    
+
     return Status::OK();
 }
 
@@ -135,12 +137,12 @@ static bool supportFabricMem() {
         return !use_ipc;
     }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_MUSA)
     int num_devices = 0;
     cudaError_t err = cudaGetDeviceCount(&num_devices);
     if (err != cudaSuccess) {
         LOG(ERROR) << "NvlinkTransport: cudaGetDeviceCount failed: "
-                    << cudaGetErrorString(err);
+                   << cudaGetErrorString(err);
         return false;
     }
     if (num_devices == 0) {
@@ -157,8 +159,8 @@ static bool supportFabricMem() {
             return false;
         }
     }
-    
-#elif USE_ROCM
+
+#elif USE_HIP
     return false;
 #endif
     return true;
@@ -213,22 +215,22 @@ static bool enableP2PAccess(int src_device_id, int dst_device_id) {
     return true;
 }
 
-#ifdef USE_ROCM
-static int open_fd(const CUmemFabricHandle& export_handle) {
+#ifdef USE_HIP
+static int open_fd(const CUmemFabricHandle &export_handle) {
     int fd = export_handle.fd;
     int pid = export_handle.pid;
 
     int pid_fd = syscall(__NR_pidfd_open, pid, 0);
     if (pid_fd == -1) {
-        LOG(ERROR) << "pidfd_open error: " << strerror(errno)
-                   << " ( " << pid << " " << fd << ")";
+        LOG(ERROR) << "pidfd_open error: " << strerror(errno) << " ( " << pid
+                   << " " << fd << ")";
         return -1;
     }
 
     int open_fd = syscall(__NR_pidfd_getfd, pid_fd, fd, 0);
     if (open_fd == -1) {
-        LOG(ERROR) << "pidfd_getfd error: " << strerror(errno)
-                   << " ( " << pid << " " << fd << ")";
+        LOG(ERROR) << "pidfd_getfd error: " << strerror(errno) << " ( " << pid
+                   << " " << fd << ")";
         close(pid_fd);
         return -1;
     }
@@ -238,9 +240,10 @@ static int open_fd(const CUmemFabricHandle& export_handle) {
 }
 #endif
 
-NvlinkTransport::NvlinkTransport() : use_fabric_mem_(supportFabricMem()), 
-                                     stream_pool_(default_num_streams),
-                                     event_pool_(default_num_events) { }
+NvlinkTransport::NvlinkTransport()
+    : use_fabric_mem_(supportFabricMem()),
+      stream_pool_(default_num_streams),
+      event_pool_(default_num_events) {}
 //     int num_devices = getNumDevices();
 //     if (globalConfig().trace) {
 //         LOG(INFO) << "NvlinkTransport: use_fabric_mem_:" << use_fabric_mem_
@@ -313,14 +316,14 @@ Status NvlinkTransport::submitTransfer(
     for (auto &request : entries) {
         TransferTask &task = batch_desc.task_list[task_id];
         ++task_id;
-        
+
         // Set device context for the transfer
         int device_id;
         Status status = setDeviceContextForTransfer(request.source, device_id);
         if (!status.ok()) {
             return status;
         }
-        
+
         uint64_t dest_addr = request.target_offset;
         if (request.target_id != LOCAL_SEGMENT_ID) {
             int rc = relocateSharedMemoryAddress(dest_addr, request.length,
@@ -381,7 +384,6 @@ Status NvlinkTransport::getTransferStatus(BatchID batch_id, size_t task_id,
 
 Status NvlinkTransport::submitTransferTask(
     const std::vector<TransferTask *> &task_list) {
-
     std::vector<cudaEvent_t> events(task_list.size());
     std::vector<Slice *> slices(task_list.size());
     std::vector<int> device_ids(task_list.size());
@@ -392,7 +394,7 @@ Status NvlinkTransport::submitTransferTask(
         auto &task = *task_list[index];
         assert(task.request);
         auto &request = *task.request;
-        
+
         // Set device context for the transfer
         int device_id;
         Status status = setDeviceContextForTransfer(request.source, device_id);
@@ -400,7 +402,7 @@ Status NvlinkTransport::submitTransferTask(
             return status;
         }
         device_ids[index] = device_id;
-        
+
         uint64_t dest_addr = request.target_offset;
         if (request.target_id != LOCAL_SEGMENT_ID) {
             int rc = relocateSharedMemoryAddress(dest_addr, request.length,
@@ -418,7 +420,7 @@ Status NvlinkTransport::submitTransferTask(
         slice->status = Slice::PENDING;
         task.slice_list.push_back(slice);
         __sync_fetch_and_add(&task.slice_count, 1);
-        
+
         slices[index] = slice;
         events[index] = event_pool_.getEvent(device_id);
         cudaStream_t stream = stream_pool_.getNextStream(device_id);
@@ -434,8 +436,8 @@ Status NvlinkTransport::submitTransferTask(
                                   cudaMemcpyDefault, stream);
         } else {
             err = cudaMemcpyAsync((void *)slice->local.dest_addr,
-                                   slice->source_addr, slice->length,
-                                   cudaMemcpyDefault, stream);
+                                  slice->source_addr, slice->length,
+                                  cudaMemcpyDefault, stream);
         }
         if (err != cudaSuccess) {
             slice->markFailed();
@@ -456,8 +458,10 @@ Status NvlinkTransport::submitTransferTask(
         }
 
         err = cudaEventSynchronize(events[index]);
-        if (err != cudaSuccess) slice->markFailed();
-        else slice->markSuccess();
+        if (err != cudaSuccess)
+            slice->markFailed();
+        else
+            slice->markSuccess();
 
         event_pool_.putEvent(events[index], device_ids[index]);
     }
@@ -575,7 +579,7 @@ int NvlinkTransport::registerLocalMemory(void *addr, size_t length,
             return -1;
         }
 
-#ifdef USE_ROCM
+#ifdef USE_HIP
         export_handle.pid = getpid();
 #endif
 
@@ -640,8 +644,8 @@ int NvlinkTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
                     memcpy(&export_handle, output_buffer.data(),
                            sizeof(export_handle));
                     void *shm_addr = nullptr;
-#ifdef USE_ROCM
-                    if (CU_MEM_HANDLE_TYPE_FABRIC == 
+#ifdef USE_HIP
+                    if (CU_MEM_HANDLE_TYPE_FABRIC ==
                         hipMemHandleTypePosixFileDescriptor) {
                         export_handle.fd = open_fd(export_handle);
                         if (export_handle.fd == -1) {
@@ -755,7 +759,11 @@ void *NvlinkTransport::allocatePinnedLocalMemory(size_t size) {
     }
     prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
     prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+#if defined(USE_CUDA)
     prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_FABRIC;
+#elif USE_HIP
+    prop.requestedHandleType = CU_MEM_HANDLE_TYPE_FABRIC;
+#endif
     prop.location.id = currentDev;
     result = cuDeviceGetAttribute(
         &flag, CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED,

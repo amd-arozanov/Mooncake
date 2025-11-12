@@ -1,4 +1,4 @@
-// Copyright 2024 KVCache.AI
+// Copyright(C) 2025 Advanced Micro Devices, Inc. All rights reserved.
 
 #ifndef STREAM_POOL_H_
 #define STREAM_POOL_H_

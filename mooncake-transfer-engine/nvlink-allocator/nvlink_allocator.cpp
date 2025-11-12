@@ -1,3 +1,6 @@
+// Modifications Copyright(C) 2025 Advanced Micro Devices, Inc.
+// All rights reserved.
+
 #include "cuda_alike.h"
 #include <sys/types.h>
 

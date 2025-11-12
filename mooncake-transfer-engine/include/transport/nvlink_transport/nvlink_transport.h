@@ -1,4 +1,7 @@
 // Copyright 2024 KVCache.AI
+//
+// Modifications Copyright(C) 2025 Advanced Micro Devices, Inc.
+// All rights reserved.
 
 #ifndef NVLINK_TRANSPORT_H_
 #define NVLINK_TRANSPORT_H_

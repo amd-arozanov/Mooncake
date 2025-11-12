@@ -384,10 +384,13 @@ Status NvlinkTransport::getTransferStatus(BatchID batch_id, size_t task_id,
 
 Status NvlinkTransport::submitTransferTask(
     const std::vector<TransferTask *> &task_list) {
+    cudaError_t err;
+
+#if USE_HIP
     std::vector<cudaEvent_t> events(task_list.size());
     std::vector<Slice *> slices(task_list.size());
     std::vector<int> device_ids(task_list.size());
-    cudaError_t err;
+#endif
 
     for (size_t index = 0; index < task_list.size(); ++index) {
         assert(task_list[index]);
@@ -401,7 +404,6 @@ Status NvlinkTransport::submitTransferTask(
         if (!status.ok()) {
             return status;
         }
-        device_ids[index] = device_id;
 
         uint64_t dest_addr = request.target_offset;
         if (request.target_id != LOCAL_SEGMENT_ID) {
@@ -421,7 +423,22 @@ Status NvlinkTransport::submitTransferTask(
         task.slice_list.push_back(slice);
         __sync_fetch_and_add(&task.slice_count, 1);
 
+#if defined(USE_CUDA) || defined(USE_MUSA)
+        if (slice->opcode == TransferRequest::READ) {
+            err = cudaMemcpy(slice->source_addr, (void *)slice->local.dest_addr,
+                             slice->length, cudaMemcpyDefault);
+        } else {
+            err = cudaMemcpy((void *)slice->local.dest_addr, slice->source_addr,
+                             slice->length, cudaMemcpyDefault);
+        }
+        if (err != cudaSuccess) {
+            slice->markFailed();
+        } else {
+            slice->markSuccess();
+        }
+#elif defined(USE_HIP)
         slices[index] = slice;
+        device_ids[index] = device_id;
         events[index] = event_pool_.getEvent(device_id);
         cudaStream_t stream = stream_pool_.getNextStream(device_id);
 
@@ -442,6 +459,7 @@ Status NvlinkTransport::submitTransferTask(
         if (err != cudaSuccess) {
             slice->markFailed();
             event_pool_.putEvent(events[index], device_id);
+            continue;
         }
 
         err = cudaEventRecord(events[index], stream);
@@ -449,8 +467,10 @@ Status NvlinkTransport::submitTransferTask(
             slice->markFailed();
             event_pool_.putEvent(events[index], device_id);
         }
+#endif
     }
 
+#ifdef USE_HIP
     for (size_t index = 0; index < task_list.size(); ++index) {
         Slice *slice = slices[index];
         if (slice->status == Slice::SliceStatus::FAILED) {
@@ -465,6 +485,7 @@ Status NvlinkTransport::submitTransferTask(
 
         event_pool_.putEvent(events[index], device_ids[index]);
     }
+#endif  // USE_HIP
 
     return Status::OK();
 }

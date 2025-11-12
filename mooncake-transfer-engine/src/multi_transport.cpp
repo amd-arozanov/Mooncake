@@ -202,6 +202,8 @@ Status MultiTransport::getBatchTransferStatus(BatchID batch_id,
 Transport *MultiTransport::installTransport(const std::string &proto,
                                             std::shared_ptr<Topology> topo) {
     Transport *transport = nullptr;
+    std::string map_key = proto;
+
     if (std::string(proto) == "rdma") {
         transport = new RdmaTransport();
     }
@@ -239,7 +241,14 @@ Transport *MultiTransport::installTransport(const std::string &proto,
     else if (std::string(proto) == "nvlink") {
         transport = new NvlinkTransport();
     }
-#endif
+#ifdef USE_HIP
+    else if (std::string(proto) == "hip") {
+        // Reuse nvlink transport for HIP
+        transport = new NvlinkTransport();
+        map_key = "nvlink";
+    }
+#endif  // USE_HIP
+#endif  // USE_MNNVL
 #ifdef USE_CXL
     else if (std::string(proto) == "cxl") {
         transport = new CxlTransport();
@@ -290,7 +299,7 @@ Transport *MultiTransport::installTransport(const std::string &proto,
         return nullptr;
     }
 
-    transport_map_[proto] = std::shared_ptr<Transport>(transport);
+    transport_map_[map_key] = std::shared_ptr<Transport>(transport);
     return transport;
 }
 

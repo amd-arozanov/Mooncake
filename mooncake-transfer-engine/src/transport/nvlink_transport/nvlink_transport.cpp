@@ -51,6 +51,75 @@ static bool checkCudaErrorReturn(cudaError_t result, const char *message) {
 }
 
 namespace mooncake {
+
+static int getDeviceFromPointer(void *ptr) {
+    if (!ptr) {
+        LOG(ERROR) << "NvlinkTransport: null pointer passed to "
+                      "getDeviceFromPointer";
+        return -1;
+    }
+
+    cudaPointerAttributes attributes;
+    cudaError_t err = cudaPointerGetAttributes(&attributes, ptr);
+    if (!checkCudaErrorReturn(
+            err, "NvlinkTransport: cudaPointerGetAttributes failed")) {
+        return -1;
+    }
+
+    if (attributes.type == cudaMemoryTypeDevice) {
+        // GPU memory - return device ID
+        return attributes.device;
+    } else if (attributes.type == cudaMemoryTypeHost ||
+               attributes.type == cudaMemoryTypeUnregistered) {
+        // Host memory - return -1 to indicate CPU memory
+        // This is not an error, just indicates we should use current device
+        // context
+        if (globalConfig().trace) {
+            LOG(INFO) << "NvlinkTransport: pointer " << ptr
+                      << " is host memory (type: " << attributes.type
+                      << "), will use current device context";
+        }
+        return -1;
+    } else {
+        LOG(WARNING) << "NvlinkTransport: unknown memory type "
+                     << attributes.type << " for pointer " << ptr;
+        return -1;
+    }
+}
+
+static Status setDeviceContextForTransfer(void *source_ptr, int &device_id) {
+    // Get device ID from source pointer
+    device_id = getDeviceFromPointer(source_ptr);
+
+    // Set device context if we have GPU memory
+    if (device_id >= 0) {
+        cudaError_t err = cudaSetDevice(device_id);
+        if (!checkCudaErrorReturn(
+                err, "NvlinkTransport: failed to set device context")) {
+            return Status::InvalidArgument("Failed to set device context");
+        }
+    } else {
+        // For host memory, we'll use the current device context or device 0
+        int current_device = 0;
+        cudaError_t err = cudaGetDevice(&current_device);
+        if (err == cudaSuccess) {
+            device_id = current_device;
+        } else {
+            // Fallback to device 0
+            device_id = 0;
+            err = cudaSetDevice(device_id);
+            if (!checkCudaErrorReturn(
+                    err, "NvlinkTransport: failed to set fallback device")) {
+                return Status::InvalidArgument(
+                    "Failed to set fallback device context");
+            }
+        }
+    }
+
+    return Status::OK();
+}
+
+
 static int getNumDevices() {
     static int cached_num_devices = -1;
     if (cached_num_devices == -1) {
@@ -64,8 +133,6 @@ static int getNumDevices() {
 }
 
 static bool supportFabricMem() {
-    if (getenv("MC_USE_NVLINK_IPC")) return false;
-
     int num_devices = 0;
     cudaError_t err = cudaGetDeviceCount(&num_devices);
     if (err != cudaSuccess) {
@@ -305,6 +372,14 @@ Status NvlinkTransport::submitTransferTask(
         auto &task = *task_list[index];
         assert(task.request);
         auto &request = *task.request;
+
+	// Set device context for the transfer
+        int device_id;
+        Status status = setDeviceContextForTransfer(request.source, device_id);
+        if (!status.ok()) {
+            return status;
+        }
+
         uint64_t dest_addr = request.target_offset;
         if (request.target_id != LOCAL_SEGMENT_ID) {
             int rc = relocateSharedMemoryAddress(dest_addr, request.length,

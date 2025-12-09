@@ -408,6 +408,8 @@ Status NvlinkTransport::submitTransferTask(
             slice->markFailed();
         else
             slice->markSuccess();
+
+        cudaStreamSynchronize(0);
     }
     return Status::OK();
 }
